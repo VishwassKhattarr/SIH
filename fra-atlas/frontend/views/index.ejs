@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>FRA Atlas</title>
+  <link rel="stylesheet" href="/css/index.css">
+</head>
+<body>
+  <h1>FRA Atlas Dashboard</h1>
+
+  <form action="/upload" method="POST" enctype="multipart/form-data">
+    <input type="file" name="file" required>
+    <button type="submit">Upload PDF</button>
+  </form>
+
+  <h2>Uploaded Claims</h2>
+  <ul>
+    <% claims.forEach(c => { %>
+      <li><%= c.id %> - Villages: <%= c.villages.join(", ") %></li>
+    <% }) %>
+  </ul>
+</body>
+</html>

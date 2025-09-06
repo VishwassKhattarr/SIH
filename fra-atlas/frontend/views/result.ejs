@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>FRA Atlas</title>
+  <link rel="stylesheet" href="/css/index.css">
+</head>
+<body>
+  <h1>FRA Atlas Claims</h1>
+
+  <h2>Upload Claim PDF</h2>
+  <form action="/upload" method="POST" enctype="multipart/form-data">
+    <input type="file" name="file" />
+    <button type="submit">Upload</button>
+  </form>
+
+  <h2>Uploaded Claims</h2>
+<ul>
+  <% claims.forEach(c => { %>
+    <li>
+      <%= c.id %> -
+      Name: <%= c.name %> |
+      District: <%= c.district %> |
+      State: <%= c.state %> |
+      Villages: 
+      <% if (Array.isArray(c.village)) { %>
+        <%= c.village.join(", ") %>
+      <% } else if (c.village) { %>
+        <%= c.village %>
+      <% } else { %>
+        (no village data)
+      <% } %>
+    </li>
+  <% }) %>
+</ul>
+
+
+
+  <h2>Map</h2>
+  <div id="map" style="height:400px;width:600px;"></div>
+
+  <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+
+  <script>
+    const map = L.map('map').setView([20.5937, 78.9629], 5); // India center
+
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '© OpenStreetMap contributors'
+    }).addTo(map);
+
+    const claims = <%- JSON.stringify(claims) %>;
+
+    claims.forEach(c => {
+      // 🔑 TODO: Use geocoding API later to convert village/district into lat/lng
+      if (c.village && c.district) {
+        L.marker([19.07, 81.95]) // Bastar coords as dummy
+          .addTo(map)
+          .bindPopup(`<b>${c.name || "Unknown"}</b><br>${c.village}, ${c.district}`);
+      }
+    });
+  </script>
+</body>
+</html>
