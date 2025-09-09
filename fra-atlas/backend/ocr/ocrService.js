@@ -1,67 +1,83 @@
-// This service now handles ONLY PDF files for OCR processing.
-// It uses Tesseract.js for text extraction and our pdfProcessor for PDF conversion.
+// ocrService.js
 
-import { createWorker } from 'tesseract.js';
-import path from 'path';
-// Use ES Module import syntax
-import { convertPdfToImages } from '../utils/pdfProcessor.js';
+import fs from "fs";
+import path from "path";
+import canvas from "canvas"; // Use default import for canvas
+import { createWorker } from "tesseract.js";
 
-/**
- * Performs OCR on a given PDF file.
- * @param {string} filePath - The absolute path to the PDF file.
- * @returns {Promise<string>} A promise that resolves to the extracted text.
- */
-export async function performOCR(filePath) {
-    console.log(`[OCR Service] --- Starting OCR process for: ${filePath} ---`);
+// Destructure from the default export
+const { createCanvas, DOMMatrix, ImageData, Path2D } = canvas;
 
-    let extractedText = '';
-    // Initialize the Tesseract worker
-    const worker = await createWorker({
-        logger: m => console.log(`[Tesseract] ${m.status}: ${(m.progress * 100).toFixed(2)}%`), // Detailed Tesseract progress
-    });
+// Polyfill DOM classes for pdfjs-dist in Node.js
+global.DOMMatrix = DOMMatrix || global.DOMMatrix;
+global.ImageData = ImageData || global.ImageData;
+global.Path2D = Path2D || global.Path2D;
 
-    try {
-        // Load and initialize the English language model
-        await worker.loadLanguage('eng');
-        await worker.initialize('eng');
+const __dirname = path.dirname(new URL(import.meta.url).pathname);
 
-        const fileExtension = path.extname(filePath).toLowerCase();
-        console.log(`[OCR Service] Detected file extension: ${fileExtension}`);
+async function performPdfOcr(filePath) {
+  console.log("[OCR] Processing:", filePath);
 
-        // Ensure the file is a PDF
-        if (fileExtension !== '.pdf') {
-            console.error(`[OCR Service] ERROR: Unsupported file type provided.`);
-            throw new Error(`Unsupported file type: '${fileExtension}'. This service only processes PDF files.`);
-        }
+  const pdfjsLib = await import("pdfjs-dist/legacy/build/pdf.mjs");
 
-        console.log('[OCR Service] PDF confirmed. Starting conversion to images...');
-        const imageBuffers = await convertPdfToImages(filePath);
-        console.log(`[OCR Service] PDF conversion complete. Received ${imageBuffers.length} image(s).`);
+  const data = new Uint8Array(fs.readFileSync(filePath));
 
-        if (imageBuffers.length === 0) {
-            console.warn('[OCR Service] PDF conversion resulted in zero images.');
-            return '';
-        }
+  // ✅ Proper file URL with trailing slash
+  const { pathToFileURL } = await import("url");
+  const standardFontDataUrl = pathToFileURL(
+    path.join(__dirname, "node_modules", "pdfjs-dist", "standard_fonts") + path.sep
+  ).href+"/";
+  // ##########################################
 
-        // Loop through each image buffer and perform OCR
-        for (let i = 0; i < imageBuffers.length; i++) {
-            const buffer = imageBuffers[i];
-            console.log(`[OCR Service] Recognizing text from image buffer for page ${i + 1}...`);
-            const { data: { text } } = await worker.recognize(buffer);
-            extractedText += text + '\n\n'; // Add spacing between pages
-        }
-        console.log('[OCR Service] --- OCR process finished successfully. ---');
+  const pdfDocument = await pdfjsLib.getDocument({
+    data,
+    standardFontDataUrl,
+  }).promise;
 
-    } catch (error) {
-        console.error('[OCR Service] --- An error occurred during OCR processing: ---', error);
-        throw error; // Propagate error to the controller
-    } finally {
-        // Always terminate the worker to free up resources
-        if (worker) {
-            await worker.terminate();
-            console.log('[OCR Service] Tesseract worker terminated.');
-        }
-    }
+  const numPages = pdfDocument.numPages;
+  console.log(`[OCR Helper] PDF has ${numPages} page(s).`);
 
-    return extractedText.trim();
+  // Extract text first
+  let fullText = "";
+  for (let i = 1; i <= numPages; i++) {
+    const page = await pdfDocument.getPage(i);
+    const content = await page.getTextContent();
+    const pageText = content.items.map(item => item.str).join(" ");
+    fullText += pageText + "\n\n";
+  }
+
+  if (fullText.trim().length > 20) {
+    console.log("[OCR Helper] Extracted text using pdfjs-dist ✅");
+    return fullText.trim();
+  }
+
+  // Fallback to OCR
+  console.log("[OCR Helper] No extractable text found, falling back to OCR…");
+
+  // Step 2: OCR fallback
+  const imageBuffers = [];
+  for (let i = 1; i <= numPages; i++) {
+    const page = await pdfDocument.getPage(i);
+    const viewport = page.getViewport({ scale: 2.0 });
+    const canvasInstance = createCanvas(viewport.width, viewport.height); // Use createCanvas from canvas module
+    const context = canvasInstance.getContext("2d");
+    await page.render({ canvasContext: context, viewport: viewport }).promise;
+    imageBuffers.push(canvasInstance.toBuffer("image/png"));
+  }
+
+  const worker = await createWorker("eng+hin");
+  let fullOcrText = "";
+  for (let i = 0; i < imageBuffers.length; i++) {
+    console.log(`[OCR Helper] Running OCR on page ${i + 1}...`);
+    const {
+      data: { text },
+    } = await worker.recognize(imageBuffers[i]);
+    fullOcrText += text + "\n\n";
+  }
+  await worker.terminate();
+
+  console.log("[OCR Helper] OCR text extraction done ✅");
+  return fullOcrText.trim();
 }
+
+export { performPdfOcr };

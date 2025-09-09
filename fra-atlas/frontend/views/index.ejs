@@ -7,15 +7,19 @@
 <body>
   <h1>FRA Atlas Dashboard</h1>
 
-  <form action="/upload" method="POST" enctype="multipart/form-data">
-    <input type="file" name="file" required>
-    <button type="submit">Upload PDF</button>
+  <form action="/upload" method="post" enctype="multipart/form-data">
+    <% /* The 'name' attribute is now "file" to match the server's expectation */ %>
+    <input type="file" name="file" accept="application/pdf" required />
+    <button type="submit">Upload & Process</button>
   </form>
 
   <h2>Uploaded Claims</h2>
   <ul>
     <% claims.forEach(c => { %>
-      <li><%= c.id %> - Village: <%= c.village.join(", ") %></li>
+      <li>
+        <a href="/claim-page/<%= c.id %>">Claim <%= c.id %></a> - 
+        Village: <%= c.village ? c.village.join(", ") : "Unknown" %>
+      </li>
     <% }) %>
   </ul>
 </body>

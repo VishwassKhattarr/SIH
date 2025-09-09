@@ -1,0 +1,57 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Claim <%= claim.id %></title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <style>#map{height:500px}</style>
+</head>
+<body>
+  <h2>Claim <%= claim.id %> — <%= claim.name %></h2>
+  <div id="map"></div>
+  <div id="analysis"></div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script>
+    const claim =  JSON.parse( JSON.stringify(claim) ); // server renders claim row into page
+    const lat = claim.latitude;
+    const lon = claim.longitude;
+    const analysis = claim.analysis; // may be null
+
+    const map = L.map('map').setView([lat || 19.0, lon || 82.0], lat ? 16 : 7);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+    if (analysis && Array.isArray(analysis.classes)) {
+  popupHtml += `<b>Breakdown:</b><br/><ul>`;
+  analysis.classes.forEach(c => {
+    popupHtml += `<li>${c.class_name}: ${c.area_ha.toFixed(2)} ha (${c.percent.toFixed(1)}%)</li>`;
+  });
+  popupHtml += `</ul>`;
+}
+
+    if (lat && lon) {
+      const marker = L.marker([lat, lon]).addTo(map);
+      const radius = claim.analysis ? claim.analysis.buffer_radius_m : 200;
+      const circle = L.circle([lat, lon], {radius: radius, color: 'blue', fill:false}).addTo(map);
+
+      let popupHtml = `<b>${claim.name || 'Unknown'}</b><br/>`;
+      if (analysis) {
+        popupHtml += `<b>Total area:</b> ${analysis.total_area_ha.toFixed(2)} ha<br/>`;
+        popupHtml += `<b>Topography:</b> Elevation ${analysis.mean_elevation_m ? analysis.mean_elevation_m.toFixed(1) + ' m' : 'N/A'}, slope ${analysis.mean_slope_deg ? analysis.mean_slope_deg.toFixed(1) + '°' : 'N/A'}<br/>`;
+        popupHtml += `<b>Breakdown:</b><br/><ul>`;
+        analysis.classes.forEach(c => {
+          popupHtml += `<li>${c.class_name}: ${c.area_ha.toFixed(2)} ha (${c.percent.toFixed(1)}%)</li>`;
+        });
+        popupHtml += `</ul>`;
+      } else {
+        popupHtml += "No analysis yet (no lat/lon or analysis pending).";
+      }
+      marker.bindPopup(popupHtml).openPopup();
+      map.fitBounds(circle.getBounds());
+    } else {
+      // no coordinates
+      map.setView([21.25, 81.6], 6);
+      document.getElementById('analysis').innerText = 'No coordinates saved for this claim. Please geocode or mark it on the map.';
+    }
+  </script>
+</body>
+</html>
